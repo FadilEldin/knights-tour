@@ -16,17 +16,16 @@
 
 import pygame
 import sys
-from collections import deque
-
+# from collections import deque
 # Initialize pygame
 pygame.init()
 
 # Constants
-WIDTH, HEIGHT = 1300, 900
+WIDTH, HEIGHT = 1300, 800
 BOARD_SIZE = 8
 SQUARE_SIZE = 70
 CHESSBOARD_LEFT = (WIDTH - BOARD_SIZE * SQUARE_SIZE) // 2
-CHESSBOARD_TOP = 100  # Increased to make space for control panel
+CHESSBOARD_TOP = 20
 GRAPH_TOP = CHESSBOARD_TOP + BOARD_SIZE * SQUARE_SIZE + 60
 GRAPH_LEFT = 40
 GRAPH_NODE_SPACING = 40
@@ -40,14 +39,17 @@ PURE_BLACK = (0, 0, 0)
 PATH_COLOR = (50, 200, 50)
 FONT_COLOR = (0, 0, 0)
 BOARD_FONT_SIZE = 20
+SCORE_FONT_SIZE = 14  # Smaller font for scores
 GRAPH_FONT_SIZE = 12
 GRAPH_LINE_COLOR = (100, 100, 100)
 GRAPH_ROW_SPACING = 100
 LABEL_VERTICAL_OFFSET = 25
 KNIGHT_COLOR = (50, 50, 200)
-#CONTROL_PANEL_COLOR = (220, 220, 220)
+# CONTROL_PANEL_COLOR = (220, 220, 220)
 CONTROL_PANEL_COLOR = YELLOW
 CONTROL_PANEL_PADDING = 10
+WHITE_SQUARE_SCORE_COLOR = (200, 0, 0)  # Red for white squares
+BLACK_SQUARE_SCORE_COLOR = (255, 255, 0)  # Yellow for black squares
 
 # Animation speed (global variable)
 ANIMATION_SPEED = 1000  # milliseconds
@@ -55,8 +57,9 @@ paused = False
 
 # Set up the display
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Knight's Tour - Graph Theory Visualization")
+pygame.display.set_caption("Knight's Tour - Warnsdorff's Rule Visualization")
 board_font = pygame.font.SysFont('Arial', BOARD_FONT_SIZE)
+score_font = pygame.font.SysFont('Arial', SCORE_FONT_SIZE)
 graph_font = pygame.font.SysFont('Arial', GRAPH_FONT_SIZE)
 small_font = pygame.font.SysFont('Arial', GRAPH_FONT_SIZE - 2)
 control_font = pygame.font.SysFont('Arial', 16)
@@ -66,7 +69,6 @@ MOVES = [
     (2, 1), (1, 2), (-1, 2), (-2, 1),
     (-2, -1), (-1, -2), (1, -2), (2, -1)
 ]
-
 # -------------------------------------------------------------------------------------
 def draw_control_panel():
     """Draws the control panel at the top left"""
@@ -88,47 +90,71 @@ def draw_control_panel():
         screen.blit(text_surface,
                     (CONTROL_PANEL_PADDING + 10,
                      CONTROL_PANEL_PADDING + 10 + i * 20))
-
 # -------------------------------------------------------------------------------------
 def chess_coords(row, col):
     """Convert matrix indices to chess notation (A1-H8)"""
     return f"{chr(ord('A') + col)}{BOARD_SIZE - row}"
+
 # -------------------------------------------------------------------------------------
 def draw_knight(surface, x, y, size):
     knight_text = board_font.render("♘", True, YELLOW)
     text_rect = knight_text.get_rect(center=(x, y))
     pygame.draw.circle(surface, KNIGHT_COLOR, (x, y), size)
     surface.blit(knight_text, text_rect)
+
 # -------------------------------------------------------------------------------------
 def is_valid(x, y, board):
     return 0 <= x < BOARD_SIZE and 0 <= y < BOARD_SIZE and board[x][y] == -1
+# -------------------------------------------------------------------------------------
+def count_possible_moves(x, y, board):
+    """Count how many valid moves are available from (x,y)"""
+    count = 0
+    for dx, dy in MOVES:
+        nx, ny = x + dx, y + dy
+        if 0 <= nx < BOARD_SIZE and 0 <= ny < BOARD_SIZE:  # Just check bounds
+            if board[nx][ny] == -1:  # Only count unvisited squares
+                count += 1
+    return count
 # -------------------------------------------------------------------------------------
 def draw_chessboard_coordinates():
     # Draw letters (A-H) below the board (left to right)
     for col in range(BOARD_SIZE):
         letter = chr(ord('A') + col)
-        #text = small_font.render(letter, True, BLACK)
-        text =board_font.render(letter, True, BLACK)
+        # text = small_font.render(letter, True, BLACK)
+        text = board_font.render(letter, True, BLACK)
         screen.blit(text, (CHESSBOARD_LEFT + col * SQUARE_SIZE + SQUARE_SIZE // 2 - text.get_width() // 2,
                            CHESSBOARD_TOP + BOARD_SIZE * SQUARE_SIZE + 5))
 
     # Draw numbers (1-8) to the left of the board - 1 at bottom, 8 at top
     for row in range(BOARD_SIZE):
         number = str(row + 1)  # 1 to 8 from bottom to top
-        #text = small_font.render(number, True, BLACK)
+        # text = small_font.render(number, True, BLACK)
         text = board_font.render(number, True, BLACK)
         y_pos = CHESSBOARD_TOP + (BOARD_SIZE - row - 1) * SQUARE_SIZE + SQUARE_SIZE // 2 - text.get_height() // 2
         screen.blit(text, (CHESSBOARD_LEFT - 20, y_pos))
 # -------------------------------------------------------------------------------------
-def draw_chessboard(knight_pos, path, move_number):
+def draw_chessboard(knight_pos, path, board):
     for row in range(BOARD_SIZE):
         for col in range(BOARD_SIZE):
-            color = WHITE if (row + col) % 2 == 0 else BLACK
+            is_white = (row + col) % 2 == 0
+            color = WHITE if is_white else BLACK
             pygame.draw.rect(screen, color,
-                             (CHESSBOARD_LEFT + col * SQUARE_SIZE,
-                              CHESSBOARD_TOP + row * SQUARE_SIZE,
-                              SQUARE_SIZE, SQUARE_SIZE))
+                           (CHESSBOARD_LEFT + col * SQUARE_SIZE,
+                            CHESSBOARD_TOP + row * SQUARE_SIZE,
+                            SQUARE_SIZE, SQUARE_SIZE))
 
+            # Always draw move scores for all squares (modified this part)
+            moves_count = count_possible_moves(row, col, board)
+            if moves_count >= 0:  # Show for all squares, even visited ones
+                score_color = WHITE_SQUARE_SCORE_COLOR if is_white else BLACK_SQUARE_SCORE_COLOR
+                score_text = score_font.render(str(moves_count), True, score_color)
+                score_rect = score_text.get_rect(
+                    topleft=(CHESSBOARD_LEFT + col * SQUARE_SIZE + 5,
+                            CHESSBOARD_TOP + row * SQUARE_SIZE + 5))
+                screen.blit(score_text, score_rect)
+
+    # Rest of the function remains the same...
+    # Draw path lines
     for i in range(1, len(path)):
         prev_x, prev_y = path[i - 1]
         curr_x, curr_y = path[i]
@@ -138,11 +164,12 @@ def draw_chessboard(knight_pos, path, move_number):
                          (CHESSBOARD_LEFT + (curr_y + 0.5) * SQUARE_SIZE,
                           CHESSBOARD_TOP + (curr_x + 0.5) * SQUARE_SIZE), 3)
 
+    # Draw move numbers in center
     for i, (x, y) in enumerate(path):
         text_color = WHITE if (x + y) % 2 != 0 else BLACK
         text = board_font.render(str(i + 1), True, text_color)
         text_rect = text.get_rect(center=(CHESSBOARD_LEFT + (y + 0.5) * SQUARE_SIZE,
-                                          CHESSBOARD_TOP + (x + 0.5) * SQUARE_SIZE))
+                                  CHESSBOARD_TOP + (x + 0.5) * SQUARE_SIZE))
         screen.blit(text, text_rect)
 
     if knight_pos:
@@ -237,6 +264,7 @@ def draw_graph_visualization(path, current_step):
             curr_y = GRAPH_TOP + GRAPH_ROW_SPACING
 
         pygame.draw.line(screen, GRAPH_LINE_COLOR, (prev_x, prev_y), (curr_x, curr_y), 1)
+
 # -------------------------------------------------------------------------------------
 def knights_tour(start_x, start_y):
     global ANIMATION_SPEED, paused
@@ -250,14 +278,13 @@ def knights_tour(start_x, start_y):
         min_degree = BOARD_SIZE + 1
         next_move = None
 
+        # Find all possible next moves
+        possible_moves = []
         for dx, dy in MOVES:
             nx, ny = x + dx, y + dy
             if is_valid(nx, ny, board):
-                degree = 0
-                for ndx, ndy in MOVES:
-                    nnx, nny = nx + ndx, ny + ndy
-                    if is_valid(nnx, nny, board):
-                        degree += 1
+                degree = count_possible_moves(nx, ny, board)
+                possible_moves.append((degree, nx, ny))
 
                 if degree < min_degree:
                     min_degree = degree
@@ -286,7 +313,7 @@ def knights_tour(start_x, start_y):
         # Draw everything
         screen.fill(BACKGROUND_COLOR)
         draw_control_panel()
-        draw_chessboard((nx, ny), path, step)
+        draw_chessboard((nx, ny), path, board)
         draw_graph_visualization(path, step)
         pygame.display.flip()
 
@@ -307,7 +334,7 @@ def knights_tour(start_x, start_y):
             # Update control panel while paused
             screen.fill(BACKGROUND_COLOR)
             draw_control_panel()
-            draw_chessboard((nx, ny), path, step)
+            draw_chessboard((nx, ny), path, board)
             draw_graph_visualization(path, step)
             pygame.display.flip()
             pygame.time.delay(100)
@@ -325,13 +352,6 @@ def main():
 
     if success:
         print("\nKnight's Tour Completed!")
-        print("\nGraph Theory Explanation:")
-        print("1. The chessboard can be represented as a graph where each square is a vertex.")
-        print("2. Edges connect squares that are a knight's move apart.")
-        print("3. The Knight's Tour is a Hamiltonian path (visits each vertex exactly once).")
-        print("4. The knight alternates between black and white squares with each move:")
-        print("   - From white to black, or black to white (graph is bipartite).")
-        print("5. The solution uses Warnsdorff's algorithm, which prioritizes moves with fewest onward options.")
         for i, (x, y) in enumerate(path):
             print(f"Step {i + 1}: {chess_coords(x, y)}")
 
@@ -351,5 +371,4 @@ def main():
 # -------------------------------------------------------------------------------------
 if __name__ == "__main__":
     main()
-
-# ----------------------------------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------
